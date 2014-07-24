@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+date=$( date +%Y%m%d )
+project='evalinux-test'
+
+# f1-micro
+# g1-small
+# n1-highcpu-2
+# n1-highcpu-4
+# n1-highcpu-8
+# n1-highcpu-16
+# n1-highmem-2
+# n1-highmem-4
+# n1-highmem-8
+# n1-highmem-16
+# n1-standard-1
+# n1-standard-2
+# n1-standard-4
+# n1-standard-8
+# n1-standard-16
+machine_type='n1-highcpu-4'
+
+# asia-east1-a
+# asia-east1-b
+# europe-west1-a
+# europe-west1-b
+# us-central1-a
+# us-central1-b
+zone='us-central1-b'
+
+# virt-builder -l
+## centos-6
+## centos-7.0
+## cirros-0.3.1
+## debian-6
+## debian-7
+## fedora-18
+## fedora-19
+## fedora-20
+## rhel-7rc
+## scientificlinux-6
+## ubuntu-10.04
+## ubuntu-12.04
+## ubuntu-14.04
+os='centos-7.0'
+
+# Your Google Storage
+gs='centos-images'
+
+
+function ask_continue
+{
+    # skip for now
+    return
+    shopt -s extglob
+
+    echo -n 'Do you want to continue?: '
+    read answer
+
+    if [[ "${answer,,}" != @(yes|y|yep|sure|aha|yeah|yea) ]]; then
+        exit 0;
+    fi
+}
+
+
+# build image
+echo 'building...'
+virt-builder \
+    --format raw \
+    --size 10G \
+    --timezone Etc/UTC \
+    --password-crypto sha512 \
+    --root-password password:centosadminpass \
+    --install "irqbalance,openssh-server,openssh-clients,rsync,git,ntp,python,yum-plugin-fastestmirror,yum-plugin-merge-conf,yum-plugin-remove-with-leaves" \
+    --install "yum-cron-daily,yum-utils,patch" \
+    --firstboot setup \
+    --update \
+    --selinux-relabel \
+    -o disk.raw \
+    ${os}
+
+echo
+echo 'done building. Next: compress'
+ask_continue
+
+# if centos, fix the os variable
+if [[ "${os}" == 'centos-7.0' ]]; then
+    os='centos7'
+fi
+
+# compress
+echo 'compressing...'
+tar -Szcf ${os}-${date}.tar.gz disk.raw
+
+echo
+echo 'done compressing. Next: upload'
+ask_continue
+
+# upload
+echo 'uploading...'
+gsutil cp ./${os}-${date}.tar.gz gs://${gs}
+
+echo
+echo 'done uploading. Next: add image'
+ask_continue
+
+# add test image
+echo 'adding image...'
+gcutil --project=${project} addimage ${os}-v${date} gs://${gs}/${os}-${date}.tar.gz
+
+echo
+echo 'done adding image. Next: create instance'
+ask_continue
+
+# create test instance
+gcutil --project=${project} addinstance \
+    --image=${os}-v${date} \
+    --machine_type=${machine_type} \
+    --zone=${zone} \
+    ${os}-v${date}-test
+
+echo 'done creating instance.'
+
+exit 0

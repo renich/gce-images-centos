@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+
+# WARNING!
+# Please, do not run this script by it's own. It can destroy some of your configuration.
+# This script is a setup script for the guest we're creating.
+
+# hosts
+cat << 'EOF' > /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+169.254.169.254 metadata.google.internal metadata
+EOF
+
+# networking
+rm -fr /etc/sysconfig/networking
+rm -f /etc/udev/rules.d/70-persistent-net.rules
+rm -f /etc/hostname
+
+cat << 'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth0
+TYPE="Ethernet"
+DEVICE="eth0"
+NAME="eth0"
+ONBOOT="yes"
+BOOTPROTO="dhcp"
+DEFROUTE="yes"
+IPV4_FAILURE_FATAL="yes"
+IPV6INIT="no"
+PEERDNS="yes"
+DNS3="8.8.8.8"
+EOF
+
+# ntp
+sed -ri '/^server [1-3]\.fedora.*$/d' /etc/ntp.conf
+sed -ri 's@^server 0\.fedora.*$@server metadata.google.internal iburst@' /etc/ntp.conf
+
+# disable firewall
+systemctl disable firewalld.service iptables.service
+systemctl stop firewalld.service iptables.service
+
+# yum updates
+sed -ri 's@apply_updates = no@apply_updates = yes@' /etc/yum/yum-cron.conf
+
+# ssh config
+## delete the keys
+rm /etc/ssh/ssh_host_key
+rm /etc/ssh/ssh_host_rsa_key*
+rm /etc/ssh/ssh_host_dsa_key*
+rm /etc/ssh/ssh_host_ecdsa_key*
+
+## patch sshd_config
+patch /etc/ssh/sshd_config < <( cat << 'EOF'
+18,19c18,19
+< #AddressFamily any
+< #ListenAddress 0.0.0.0
+---
+> AddressFamily inet
+> ListenAddress 0.0.0.0
+48c48
+< #PermitRootLogin yes
+---
+> PermitRootLogin  yes
+78c78
+< PasswordAuthentication yes
+---
+> PasswordAuthentication yes
+114c114
+< #AllowTcpForwarding yes
+---
+> AllowTcpForwarding no
+127c127
+< #ClientAliveInterval 0
+---
+> ClientAliveInterval 420
+133c133
+< #PermitTunnel no
+---
+> PermitTunnel no
+EOF
+)
+
+## lock root
+# usermod -L root
+
+# kernel
+## remove symbol table
+rm -f /boot/System.map*
+
+## configuration
+### strongly recommended
+cat << 'EOF' > /etc/sysctl.d/11-google-strongly_recommended.conf
+# Google-recommended kernel parameters
+
+# Reboot the machine soon after a kernel panic.
+kernel.panic=10
+
+# Addresses of mmap base, heap, stack and VDSO page are randomized.
+kernel.randomize_va_space=2
+
+# Ignore ICMP redirects from non-GW hosts
+net.ipv4.conf.all.accept_redirects=0
+net.ipv4.conf.all.secure_redirects=1
+net.ipv4.conf.default.accept_redirects=0
+net.ipv4.conf.default.secure_redirects=1
+
+# Ignore source-routed packets
+net.ipv4.conf.all.accept_source_route=0
+net.ipv4.conf.default.accept_source_route=0
+
+# Log spoofed, source-routed, and redirect packets
+net.ipv4.conf.all.log_martians=1
+net.ipv4.conf.default.log_martians=1
+
+# Turn on Source Address Verification in all interfaces to
+# prevent some spoofing attacks.
+net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.default.rp_filter=1
+
+# Don't pass traffic between networks or act as a router
+net.ipv4.conf.all.send_redirects=0
+net.ipv4.conf.default.send_redirects=0
+net.ipv4.ip_forward=0
+
+# Ignore ICMP broadcasts to avoid participating in Smurf attacks
+net.ipv4.icmp_echo_ignore_broadcasts=1
+
+# Ignore bad ICMP errors
+net.ipv4.icmp_ignore_bogus_error_responses=1
+
+# RFC 1337 fix
+net.ipv4.tcp_rfc1337=1
+
+# Turn on SYN-flood protections.  Starting with 2.6.26, there is no loss
+# of TCP functionality/features under normal conditions.  When flood
+# protections kick in under high unanswered-SYN load, the system
+# should remain more stable, with a trade off of some loss of TCP
+# functionality/features (e.g. TCP Window scaling).
+net.ipv4.tcp_syncookies=1
+EOF
+
+cat << 'EOF' > /etc/sysctl.d/12-google-recommended.conf
+# provides protection from ToCToU races
+fs.protected_hardlinks=1
+
+# provides protection from ToCToU races
+fs.protected_symlinks=1
+
+# makes locating kernel addresses more difficult
+kernel.kptr_restrict=1
+
+# set ptrace protections
+kernel.yama.ptrace_scope=1
+
+# set perf only available to root
+kernel.perf_event_paranoid=2
+EOF
+
+# google things
+# todo:
+#   * google-daemon depends on syslog.service; which does not exist in fedora
+
+# repos
+## install epel
+yum -y install http://dl.fedoraproject.org/pub/epel/beta/7/x86_64/epel-release-7-0.2.noarch.rpm
+
+## update
+yum -y upgrade
+
+exit 0
