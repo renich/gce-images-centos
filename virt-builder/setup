@@ -19,14 +19,21 @@ cat << 'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth0
 TYPE="Ethernet"
 DEVICE="eth0"
 NAME="eth0"
+DEFROUTE="yes"
+PEERDNS="no"
+PEERROUTES="yes"
 ONBOOT="yes"
 BOOTPROTO="dhcp"
-DEFROUTE="yes"
 IPV4_FAILURE_FATAL="yes"
 IPV6INIT="no"
-PEERDNS="yes"
-DNS3="8.8.8.8"
+DNS1="8.8.8.8"
+DNS2="8.8.4.4"
+DNS3="208.67.222.222"
 EOF
+
+# bug in SELinux
+restorecon /etc/resolv.conf
+systemctl restart NetworkManager
 
 # ntp
 sed -ri '/^server [1-3]\.fedora.*$/d' /etc/ntp.conf
@@ -57,7 +64,7 @@ patch /etc/ssh/sshd_config < <( cat << 'EOF'
 48c48
 < #PermitRootLogin yes
 ---
-> PermitRootLogin  yes
+> PermitRootLogin yes # for now; until google things in place
 78c78
 < PasswordAuthentication yes
 ---

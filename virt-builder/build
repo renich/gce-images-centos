@@ -72,7 +72,7 @@ virt-builder \
     --password-crypto sha512 \
     --root-password password:centosadminpass \
     --install "irqbalance,openssh-server,openssh-clients,rsync,git,ntp,python,yum-plugin-fastestmirror,yum-plugin-merge-conf,yum-plugin-remove-with-leaves" \
-    --install "yum-cron-daily,yum-utils,patch" \
+    --install "yum-cron-daily,yum-utils,patch,vim,bash-completion" \
     --firstboot setup \
     --update \
     --selinux-relabel \
